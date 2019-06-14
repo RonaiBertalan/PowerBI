@@ -1,0 +1,34 @@
+//source of Matt Allington's Excelerator blog: https://exceleratorbi.com.au/build-reusable-calendar-table-power-query/
+// Previous version from invoked function: #"Invoked FunctionSource" = Source(#date(2017, 12, 1), #date(2019, 12, 1), "hu"),
+let
+Source = (StartDate as date, EndDate as date, optional Culture as nullable text) as table =>
+let
+DayCount = Duration.Days(Duration.From(EndDate - StartDate)),
+Source = List.Dates(StartDate,DayCount,#duration(1,0,0,0)),
+TableFromList = Table.FromList(Source, Splitter.SplitByNothing()),
+ChangedType = Table.TransformColumnTypes(TableFromList,{{"Column1", type date}}),
+RenamedColumns = Table.RenameColumns(ChangedType,{{"Column1", "Date"}}),
+InsertYear = Table.AddColumn(RenamedColumns, "Year", each Date.Year([Date])),
+InsertQuarter = Table.AddColumn(InsertYear, "Quarter", each Date.QuarterOfYear([Date])),
+InsertMonth = Table.AddColumn(InsertQuarter, "MonthNr", each Date.Month([Date])),
+InsertMonthName = Table.AddColumn(InsertMonth, "Month", each Date.ToText([Date], "MMMM", Culture), type text),
+InsertYearMonth = Table.AddColumn(InsertMonthName, "YearMonth", each Date.ToText([Date],"yyyyMM")),
+InsertDay = Table.AddColumn(InsertYearMonth, "Day", each Date.Day([Date])),
+InsertDayWeek = Table.AddColumn(InsertDay, "DayInWeek", each Date.DayOfWeek([Date],Day.Monday) + 1),
+InsertDayName = Table.AddColumn(InsertDayWeek, "DayOfWeekName", each Date.ToText([Date], "dddd", Culture), type text),
+InsertYearWeek = Table.AddColumn(InsertDayName, "YearWeek", each  Text.From([Year]) & Text.PadStart(Text.From(Date.WeekOfYear([Date])),2,"0")  ),
+InsertWeekStarting = Table.AddColumn(InsertYearWeek, "WeekStart", each Date.StartOfWeek([Date]), type date),
+InsertWeekEnding = Table.AddColumn(InsertWeekStarting, "WeekEnding", each Date.EndOfWeek([Date]), type date)
+
+in
+InsertWeekEnding,
+#"Invoked FunctionSource" = Source(#date(2017, 12, 1), Date.AddDays(Date.From(DateTime.LocalNow()),1), "hu"),
+#"Changed Type" = Table.TransformColumnTypes(#"Invoked FunctionSource",{{"MonthNr", Int64.Type}, {"Quarter", Int64.Type}, {"Day", Int64.Type}, {"DayInWeek", Int64.Type}}),
+#"Duplicated Column" = Table.DuplicateColumn(#"Changed Type", "Date", "WeekofYear"),
+#"Calculated Week of Year" = Table.TransformColumns(#"Duplicated Column",{{"WeekofYear", Date.WeekOfYear}}),
+#"Changed Type1" = Table.TransformColumnTypes(#"Calculated Week of Year",{{"Year", Int64.Type}}),
+#"Added Custom" = Table.AddColumn(#"Changed Type1", "Sorting Order", each [Year]*100 + [MonthNr]),
+    #"Added Custom1" = Table.AddColumn(#"Added Custom", "LastRefreshed", each DateTime.LocalNow()),
+    #"Changed Type3" = Table.TransformColumnTypes(#"Added Custom1",{{"LastRefreshed", type datetime}})
+in
+    #"Changed Type3"
